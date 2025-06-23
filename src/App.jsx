@@ -1,18 +1,31 @@
 import { useState, useEffect } from 'react';
 import { db } from './firebaseConfig';
 import { collection, addDoc, getDocs } from 'firebase/firestore';
+import Menu from './Menu';
+
+function formatarDataBr(dataIso) {
+  const [ano, mes, dia] = dataIso.split('-');
+  return `${dia}/${mes}/${ano}`;
+}
 
 function App() {
-  const [form, setForm] = useState({
-    nomeTime: '',
-    local: '',
-    tipo: '',
-    inicioTorneio: '',
-    fimTorneio: '',
-    dataJogo: '',
-    amistoso: false,
-    observacoes: '',
-  });
+const [form, setForm] = useState({
+  nomeTime: '',
+  nomeTorneio: '',
+  local: '',
+  tipo: '',
+  inicioTorneio: '',
+  fimTorneio: '',
+  dataJogo: '',
+  amistoso: false,
+  ehTorneio: false,
+  observacoes: '',
+});
+
+  const [times, setTimes] = useState([]);
+  const [torneios, setTorneios] = useState([]);
+  const [torneioSelecionado, setTorneioSelecionado] = useState(null);
+
 
   const [convites, setConvites] = useState([]);
   async function carregarConvites() {
@@ -30,6 +43,38 @@ function App() {
   useEffect(() => {
   carregarConvites();
 }, []);
+  useEffect(() => {
+  async function carregarTimes() {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'times'));
+      const lista = [];
+      querySnapshot.forEach((doc) => {
+        lista.push({ id: doc.id, ...doc.data() });
+      });
+      setTimes(lista);
+    } catch (error) {
+      console.error('Erro ao carregar times:', error);
+    }
+  }
+
+  carregarTimes();
+}, []);
+  useEffect(() => {
+  async function carregarTorneios() {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'torneios'));
+      const lista = [];
+      querySnapshot.forEach((doc) => {
+        lista.push({ id: doc.id, ...doc.data() });
+      });
+      setTorneios(lista);
+    } catch (error) {
+      console.error('Erro ao carregar torneios:', error);
+    }
+  }
+
+  carregarTorneios();
+}, []);
 
 
   function handleTipoChange(tipoSelecionado) {
@@ -40,10 +85,16 @@ function App() {
       fimTorneio: '',
       dataJogo: '',
       amistoso: false,
+      ehTorneio: false,
     });
   }
 
   function handleChange(e) {
+    if (e.target.name === 'nomeTorneio') {
+  const torneio = torneios.find(t => t.nome === e.target.value);
+  console.log('Torneio selecionado:', torneio);
+  setTorneioSelecionado(torneio || null);
+    }
     const { name, value, type, checked } = e.target;
     setForm({
       ...form,
@@ -55,22 +106,33 @@ async function handleSubmit(e) {
   e.preventDefault();
 
   try {
+    // ✅ Preenche automaticamente as datas se houver torneio selecionado
+    if (torneioSelecionado) {
+      form.inicioTorneio = torneioSelecionado.dataInicio;
+      form.fimTorneio = torneioSelecionado.dataFim;
+
+    }
+
     const docRef = await addDoc(collection(db, 'convites'), form);
     alert('Convite publicado com sucesso!');
     console.log('Convite salvo com ID:', docRef.id);
 
-    await carregarConvites(); // ✅ Aqui é onde faltava
+    await carregarConvites();
 
     setForm({
       nomeTime: '',
+      nomeTorneio: '',
       local: '',
       tipo: '',
       inicioTorneio: '',
       fimTorneio: '',
       dataJogo: '',
       amistoso: false,
+      ehTorneio: false,
       observacoes: '',
     });
+
+    setTorneioSelecionado(null); // ✅ reseta o torneio selecionado
   } catch (error) {
     console.error('Erro ao salvar convite:', error);
     alert('Erro ao publicar convite. Veja o console para detalhes.');
@@ -78,15 +140,25 @@ async function handleSubmit(e) {
 }
 
 
+
   return (
     <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+      <Menu />
       <h1>Hockey Connect</h1>
       <h2>Postar convite</h2>
       <form onSubmit={handleSubmit}>
-        <div>
-          <label>Nome do Time:</label><br />
-          <input type="text" name="nomeTime" value={form.nomeTime} onChange={handleChange} required />
-        </div>
+       <div>
+  <label>Time:</label><br />
+  <select name="nomeTime" value={form.nomeTime} onChange={handleChange} required>
+    <option value="">Selecione um time</option>
+    {times.map((time) => (
+      <option key={time.id} value={time.nome}>
+        {time.nome}
+      </option>
+    ))}
+  </select>
+</div>
+
         <div>
           <label>Local:</label><br />
           <input type="text" name="local" value={form.local} onChange={handleChange} required />
@@ -110,19 +182,55 @@ async function handleSubmit(e) {
             {' '}Jogo individual
           </label>
         </div>
+{form.tipo === 'torneio' && (
+  <>
+    <div style={{ marginTop: '10px' }}>
+      <label>Torneio:</label><br />
+      <select
+        name="nomeTorneio"
+        value={form.nomeTorneio}
+        onChange={handleChange}
+        required
+      >
+        <option value="">Selecione um torneio</option>
+        {torneios.map((torneio) => (
+          <option key={torneio.id} value={torneio.nome}>
+            {torneio.nome}
+          </option>
+        ))}
+      </select>
+    </div>
 
-        {form.tipo === 'torneio' && (
-          <>
-            <div>
-              <label>Início do Torneio:</label><br />
-              <input type="date" name="inicioTorneio" value={form.inicioTorneio} onChange={handleChange} required />
-            </div>
-            <div>
-              <label>Fim do Torneio:</label><br />
-              <input type="date" name="fimTorneio" value={form.fimTorneio} onChange={handleChange} required />
-            </div>
-          </>
-        )}
+    {torneioSelecionado ? (
+      <div style={{ marginTop: '10px' }}>
+        <p><strong>Início:</strong> {formatarDataBr(torneioSelecionado.dataInicio)}</p>
+        <p><strong>Fim:</strong> {formatarDataBr(torneioSelecionado.dataFim)}</p>
+
+      </div>
+    ) : (
+      <>
+        <div>
+          <label>Início do Torneio:</label><br />
+          <input
+            type="date"
+            name="inicioTorneio"
+            value={form.inicioTorneio}
+            onChange={handleChange}
+          />
+        </div>
+        <div>
+          <label>Fim do Torneio:</label><br />
+          <input
+            type="date"
+            name="fimTorneio"
+            value={form.fimTorneio}
+            onChange={handleChange}
+          />
+        </div>
+      </>
+    )}
+  </>
+)}
 
         {form.tipo === 'jogo' && (
           <>
@@ -182,4 +290,3 @@ async function handleSubmit(e) {
 }
 
 export default App;
-
